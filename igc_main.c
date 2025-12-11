@@ -31,6 +31,9 @@ MODULE_AUTHOR("Jim Ma, <majinjing3@gmail.com>");
 MODULE_DESCRIPTION(DRV_SUMMARY);
 MODULE_VERSION(DRV_VERSION);
 MODULE_LICENSE("GPL v2");
+#ifdef CONFIG_PTP_1588_CLOCK_MODULE
+MODULE_SOFTDEP("pre: ptp");
+#endif
 module_param(debug, int, 0);
 MODULE_PARM_DESC(debug, "Debug level (0=none,...,16=all)");
 
@@ -3779,7 +3782,7 @@ void igc_down(struct igc_adapter *adapter)
 	/* flush and sleep below */
 
 	/* set trans_start so we don't get spurious watchdogs during reset */
-	netdev->trans_start = jiffies;
+	netif_trans_update(netdev);
 
 	netif_carrier_off(netdev);
 	netif_tx_stop_all_queues(netdev);
@@ -3900,7 +3903,7 @@ static int igc_change_mtu(struct net_device *netdev, int new_mtu)
  * Returns the address of the device statistics structure.
  * The statistics are updated here and also from the timer callback.
  */
-static struct rtnl_link_stats64 *igc_get_stats64(struct net_device *netdev,
+static void igc_get_stats64(struct net_device *netdev,
 			    struct rtnl_link_stats64 *stats)
 {
 	struct igc_adapter *adapter = netdev_priv(netdev);
@@ -3910,7 +3913,6 @@ static struct rtnl_link_stats64 *igc_get_stats64(struct net_device *netdev,
 		igc_update_stats(adapter);
 	memcpy(stats, &adapter->stats64, sizeof(*stats));
 	spin_unlock(&adapter->stats64_lock);
-	return stats;
 }
 
 static netdev_features_t igc_fix_features(struct net_device *netdev,
@@ -4847,7 +4849,7 @@ static const struct net_device_ops igc_netdev_ops = {
 	.ndo_start_xmit		= igc_xmit_frame,
 	.ndo_set_rx_mode	= igc_set_rx_mode,
 	.ndo_set_mac_address	= igc_set_mac,
-	.ndo_change_mtu		= igc_change_mtu,
+	.ndo_change_mtu_rh74	= igc_change_mtu,
 	.ndo_get_stats64	= igc_get_stats64,
 	.ndo_fix_features	= igc_fix_features,
 	.ndo_set_features	= igc_set_features,
