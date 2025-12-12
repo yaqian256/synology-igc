@@ -2,40 +2,25 @@
 
 This repository contains the Intel IGC driver backported for CentOS 7.9 (kernel 3.10). It is based on the `synology-igc` driver which was originally targeted for kernel 4.4.180.
 
-## Prerequisites
+## Prerequisites (Build Machine)
 
-The build process is automated via scripts in the `build/` directory.
+The build process is automated via scripts in the `build/` directory. You can build on a workstation with Docker or a CentOS 7 machine/VM.
 
-### 1. Setup Environment
+### Setup Environment (Manual Build Only)
 
-Run the setup script to install dependencies and fix repositories (if on CentOS 7).
+If you are building manually on a CentOS host (Option B), run the setup script to install dependencies and fix repositories.
+
+> **Tip:** If you need to build for specific kernels (e.g., `kernel-rt`) or offline targets, place the required RPMs (e.g., `kernel-devel-*.rpm`) in the `build/rpm_pkg/` directory. The setup script will automatically install them.
 
 ```bash
 chmod +x build/*.sh
+chmod +x build/docker/*.sh
 sudo ./build/setup_env.sh
 ```
 
-## Build and Install
+## Phase 1: Build the Driver
 
-### Option A: Build and Install on Host (Manual)
-
-1. **Compile the module:**
-
-    ```bash
-    ./build/compile.sh
-    ```
-
-    This will create `igc.ko.xz` in the current directory.
-
-2. **Install the module:**
-
-    ```bash
-    sudo ./build/install.sh
-    ```
-
-    This will install the module to `/lib/modules/$(uname -r)/...`, update dependencies, and reload the driver.
-
-### Option B: Build in Docker
+### Option A: Build in Docker (Recommended)
 
 To build for multiple kernels or in a clean environment:
 
@@ -45,8 +30,42 @@ To build for multiple kernels or in a clean environment:
     ./build/docker/run_docker.sh
     ```
 
+    (On Windows, you can run `build\docker\run_docker.bat`)
+
     This will build the driver for all kernels found in `build/rpm_pkg` (if you provide RPMs) or the default kernel in the container.
     Artifacts will be placed in the `output/` directory.
+
+### Option B: Build on Host (physical or virtual machine running CentOS 7.9)
+
+1. **Compile the module:**
+
+    ```bash
+    ./build/compile.sh
+    ```
+
+    This will create `igc.ko.xz` (or `igc-<kernel>.ko.xz`) in the `output/` directory.
+
+## Phase 2: Install on Target Machine
+
+Since the target machine likely lacks network connectivity (due to the missing igc driver), you will need to transfer the files via USB.
+
+1. **Prepare Files:**
+
+    Copy the following files to a USB drive:
+    * The build artifact (e.g., `output/igc-3.10.0-1160.el7.x86_64.ko.xz`)
+    * The installation script: `build/install.sh`
+
+2. **Install:**
+    Plug the USB drive into the target machine, mount it, and run the install script with the module file as an argument:
+
+    ```bash
+    # Example assuming USB is mounted at /mnt/usb
+    cd /mnt/usb
+    sudo chmod +x install.sh
+    sudo ./install.sh igc-3.10.0-1160.el7.x86_64.ko.xz
+    ```
+
+    This will install the module, update dependencies, and reload the driver.
 
 ## Persistence after Reboot
 
