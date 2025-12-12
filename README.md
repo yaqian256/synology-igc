@@ -4,34 +4,49 @@ This repository contains the Intel IGC driver backported for CentOS 7.9 (kernel 
 
 ## Prerequisites
 
-Before building, ensure you have the necessary development tools and kernel headers installed for your running kernel.
+The build process is automated via scripts in the `build/` directory.
+
+### 1. Setup Environment
+
+Run the setup script to install dependencies and fix repositories (if on CentOS 7).
 
 ```bash
-sudo yum update
-sudo yum groupinstall 'Development Tools'
-sudo yum install kernel-devel-$(uname -r)
+chmod +x build/*.sh
+sudo ./build/setup_env.sh
 ```
 
 ## Build and Install
 
-A helper script `build.sh` is provided to automate the build, installation, and reloading process.
+### Option A: Build and Install on Host (Manual)
 
-1.  **Make the script executable:**
+1. **Compile the module:**
+
     ```bash
-    chmod +x build.sh
+    ./build/compile.sh
     ```
 
-2.  **Run the build script:**
+    This will create `igc.ko.xz` in the current directory.
+
+2. **Install the module:**
+
     ```bash
-    ./build.sh
+    sudo ./build/install.sh
     ```
 
-This script will:
-*   Compile the `igc.ko` module against your current kernel.
-*   Compress the module to `igc.ko.xz` (matching CentOS 7 standards).
-*   Install it to `/lib/modules/$(uname -r)/updates/drivers/net/ethernet/intel/igc/`.
-*   Update module dependencies (`depmod -a`).
-*   Unload the old driver and load the new one.
+    This will install the module to `/lib/modules/$(uname -r)/...`, update dependencies, and reload the driver.
+
+### Option B: Build in Docker
+
+To build for multiple kernels or in a clean environment:
+
+1. **Run the Docker build:**
+
+    ```bash
+    ./build/docker/run_docker.sh
+    ```
+
+    This will build the driver for all kernels found in `build/rpm_pkg` (if you provide RPMs) or the default kernel in the container.
+    Artifacts will be placed in the `output/` directory.
 
 ## Persistence after Reboot
 
@@ -48,33 +63,42 @@ sudo dracut -f
 The following information summarizes common issues encountered during the backporting process.
 
 ### 1. "Unknown symbol ptp_..." Errors
+
 The IGC driver depends on the PTP (Precision Time Protocol) subsystem.
-*   **Symptom:** `modprobe` fails with "Unknown symbol" errors related to `ptp_clock_index`, `ptp_clock_register`, etc.
-*   **Solution:** This is usually caused by forgetting to update the module dependency database after installation. Run `sudo depmod -a` before loading the module.
+
+* **Symptom:** `modprobe` fails with "Unknown symbol" errors related to `ptp_clock_index`, `ptp_clock_register`, etc.
+* **Solution:** This is usually caused by forgetting to update the module dependency database after installation. Run `sudo depmod -a` before loading the module.
     The driver has been updated with `MODULE_SOFTDEP("pre: ptp")` to automatically request the `ptp` module. If it still fails, ensure the `ptp` module is available and loaded:
+
     ```bash
     sudo modprobe ptp
     ```
 
 ### 2. Driver Loaded but network is not working
-*   **Symptom:** `lsmod | grep igc` shows the module is loaded, but network is not working, and `lspci -nnk | grep -i ethernet -A3` does not show "Kernel driver in use: igc".
-*   **Cause:** The driver failed to bind to the hardware during the "probe" phase.
-*   **Diagnosis:** Check kernel logs for specific error codes:
+
+* **Symptom:** `lsmod | grep igc` shows the module is loaded, but network is not working, and `lspci -nnk | grep -i ethernet -A3` does not show "Kernel driver in use: igc".
+* **Cause:** The driver failed to bind to the hardware during the "probe" phase.
+* **Diagnosis:** Check kernel logs for specific error codes:
+
     ```bash
     dmesg | grep -i igc
     ```
 
 ### 3. Probe Failed with Error -2 (ENOENT)
-*   **Symptom:** `dmesg` shows `igc: probe of 0000:xx:00.0 failed with error -2`.
-*   **Context:** In the context of driver initialization, this often indicates a missing kernel resource, subsystem initialization failure, or API mismatch in the backport (e.g., LED setup or PHY initialization failures).  I saw this error when loading the driver modified from https://github.com/systems-nuts/igc_driver
-*   **Diagnosis:** It may require code modifications to handle 3.10 kernel API differences.
+
+* **Symptom:** `dmesg` shows `igc: probe of 0000:xx:00.0 failed with error -2`.
+* **Context:** In the context of driver initialization, this often indicates a missing kernel resource, subsystem initialization failure, or API mismatch in the backport (e.g., LED setup or PHY initialization failures).  I saw this error when loading the driver modified from <https://github.com/systems-nuts/igc_driver>
+* **Diagnosis:** It may require code modifications to handle 3.10 kernel API differences.
 
 ### 4. Kernel Taint Warning
-*   **Message:** `igc: loading out-of-tree module taints kernel.`
-*   **Status:** Safe to ignore. This simply indicates that the module was compiled outside of the official CentOS kernel source tree.
+
+* **Message:** `igc: loading out-of-tree module taints kernel.`
+* **Status:** Safe to ignore. This simply indicates that the module was compiled outside of the official CentOS kernel source tree.
 
 ### 5. Refreshing Network Interfaces
+
 After loading the driver, you may need to restart the network interface to make it active.
+
 ```bash
 # Identify your interface name (e.g., eno1)
 nmcli device status
@@ -84,10 +108,9 @@ sudo nmcli device down <interface_name>
 sudo nmcli device up <interface_name>
 ```
 
-
 # Intel igc driver for Synology Kernel 4.4.180
 
-> Backport from Linux Kernel v5.12, commit: https://github.com/torvalds/linux/commit/9f4ad9e425a1d3b6a34617b8ea226d56a119a717
+> Backport from Linux Kernel v5.12, commit: <https://github.com/torvalds/linux/commit/9f4ad9e425a1d3b6a34617b8ea226d56a119a717>
 
 ## Known issues
 
@@ -107,11 +130,11 @@ If this igc driver is compatible with your devices, you can reply in [this issue
 
 ## Prebuild module
 
-Download from https://github.com/jim3ma/synology-igc/tree/main/igc/releases
+Download from <https://github.com/jim3ma/synology-igc/tree/main/igc/releases>
 
-Eg: https://github.com/jim3ma/synology-igc/raw/main/igc/releases/igc-geminilake.tgz
+Eg: <https://github.com/jim3ma/synology-igc/raw/main/igc/releases/igc-geminilake.tgz>
 
-Follow load module action: https://github.com/jim3ma/synology-igc#3-load-module
+Follow load module action: <https://github.com/jim3ma/synology-igc#3-load-module>
 
 ## Build in docker
 
@@ -133,7 +156,7 @@ docker run -u 1000 --rm -t -v "${PWD}":/input -v "${PWD}/output":/output fbelave
 
 The `output/igc.ko` is the module.
 
-And then Follow load module actions: https://github.com/jim3ma/synology-igc#3-load-module
+And then Follow load module actions: <https://github.com/jim3ma/synology-igc#3-load-module>
 
 ## Build in Synology develop environment
 
@@ -141,7 +164,7 @@ And then Follow load module actions: https://github.com/jim3ma/synology-igc#3-lo
 
 #### Prepare Environment
 
-Refer: https://help.synology.com/developer-guide/getting_started/prepare_environment.html
+Refer: <https://help.synology.com/developer-guide/getting_started/prepare_environment.html>
 
 Assume `platform=geminilake`, `version=7.1`, working directory is `/synology-toolkit`
 
@@ -187,13 +210,14 @@ ip link set up eth1 # in my machine, the nic name is eth1
 ## TODO
 
 1. tc support
-2. igc: Enable internal i225 PPS - https://github.com/torvalds/linux/commit/64433e5bf40abf893c7edbc60899bdcdd7c70b76
+2. igc: Enable internal i225 PPS - <https://github.com/torvalds/linux/commit/64433e5bf40abf893c7edbc60899bdcdd7c70b76>
 
 ## History
 
 ### 1.3.1
 
 _Date 2022.11.26_
+
 * update ethtool version
 
 ### 1.3.0
