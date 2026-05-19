@@ -14,16 +14,6 @@
 
 #include <net/ipv6.h>
 
-static inline unsigned char *skb_checksum_start(const struct sk_buff *skb)
-{
-        return skb->head + skb->csum_start;
-}
-
-static inline void csum_replace_by_diff(__sum16 *sum, __wsum diff)
-{
-        *sum = csum_fold(csum_add(diff, ~csum_unfold(*sum)));
-}
-
 static inline void net_prefetch(void *p)
 {
         prefetch(p);
@@ -36,17 +26,6 @@ static inline bool dev_page_is_reusable(struct page *page)
 {
         return likely(page_to_nid(page) == numa_mem_id() &&
                       !page_is_pfmemalloc(page));
-}
-
-/**
- * refcount_read - get a refcount's value
- * @r: the refcount
- *
- * Return: the refcount's value
- */
-static inline unsigned int refcount_read(atomic_t *r)
-{
-        return atomic_read(r);
 }
 
 // static inline __must_check bool __refcount_sub_and_test(int i, atomic_t *r, int *oldp)
@@ -165,58 +144,3 @@ static inline unsigned int refcount_read(atomic_t *r)
 //         skb_release_all(skb);
 //         napi_skb_cache_put(skb);
 // }
-
-static inline int
-pci_request_mem_regions(struct pci_dev *pdev, const char *name)
-{
-        return pci_request_selected_regions(pdev,
-                            pci_select_bars(pdev, IORESOURCE_MEM), name);
-}
-
-static inline void
-pci_release_mem_regions(struct pci_dev *pdev)
-{
-        return pci_release_selected_regions(pdev,
-                            pci_select_bars(pdev, IORESOURCE_MEM));
-}
-
-static inline bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
-                const unsigned long *src)
-{
-        bool retval = true;
-
-        /* TODO: following test will soon always be true */
-        if (__ETHTOOL_LINK_MODE_MASK_NBITS > 32) {
-                __ETHTOOL_DECLARE_LINK_MODE_MASK(ext);
-
-                bitmap_zero(ext, __ETHTOOL_LINK_MODE_MASK_NBITS);
-                bitmap_fill(ext, 32);
-                bitmap_complement(ext, ext, __ETHTOOL_LINK_MODE_MASK_NBITS);
-                if (bitmap_intersects(ext, src,
-                                      __ETHTOOL_LINK_MODE_MASK_NBITS)) {
-                        /* src mask goes beyond bit 31 */
-                        retval = false;
-                }
-        }
-        *legacy_u32 = src[0];
-        return retval;
-}
-
-static inline int page_ref_sub_and_test(struct page *page, int nr)
-{
-	int ret = atomic_sub_and_test(nr, &page->_count);
-	return ret;
-}
-
-static inline void __page_frag_cache_drain(struct page *page, unsigned int count)
-{
-	if (page_ref_sub_and_test(page, count)) {
-		unsigned int order = compound_order(page);
-
-                // TODO optimize with free_unref_page
-		// if (order == 0)
-		// 	free_unref_page(page);
-		// else
-			__free_pages(page, order);
-	}
-}

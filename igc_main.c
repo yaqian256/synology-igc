@@ -914,7 +914,7 @@ static __le32 igc_tx_launchtime(struct igc_adapter *adapter, ktime_t txtime)
 	 * IGC_BASET, as the value writen into the launchtime
 	 * descriptor field may be misinterpreted.
 	 */
-	div_s64_rem(sub_time.tv64, cycle_time.tv64, &launchtime);
+	div_s64_rem(ktime_to_ns(sub_time), ktime_to_ns(cycle_time), &launchtime);
 
 	return cpu_to_le32(launchtime);
 }
@@ -1669,7 +1669,7 @@ static bool igc_can_reuse_rx_page(struct igc_rx_buffer *rx_buffer)
 
 #if (PAGE_SIZE < 8192)
 	/* if we are only owner of page we can reuse it */
-	if (unlikely(atomic_read(&page->_count) - pagecnt_bias > 1))
+	if (unlikely(page_ref_count(page) - pagecnt_bias > 1))
 		return false;
 #else
 #define IGC_LAST_OFFSET \
@@ -1684,7 +1684,7 @@ static bool igc_can_reuse_rx_page(struct igc_rx_buffer *rx_buffer)
 	 * number of references the driver holds.
 	 */
 	if (unlikely(!pagecnt_bias)) {
-		atomic_add(USHRT_MAX, &page->_count);
+		page_ref_add(page, USHRT_MAX);
 		rx_buffer->pagecnt_bias = USHRT_MAX;
 	}
 
@@ -3779,7 +3779,7 @@ void igc_down(struct igc_adapter *adapter)
 	/* flush and sleep below */
 
 	/* set trans_start so we don't get spurious watchdogs during reset */
-	netdev->trans_start = jiffies;
+	netif_trans_update(netdev);
 
 	netif_carrier_off(netdev);
 	netif_tx_stop_all_queues(netdev);
@@ -3900,7 +3900,7 @@ static int igc_change_mtu(struct net_device *netdev, int new_mtu)
  * Returns the address of the device statistics structure.
  * The statistics are updated here and also from the timer callback.
  */
-static struct rtnl_link_stats64 *igc_get_stats64(struct net_device *netdev,
+static void igc_get_stats64(struct net_device *netdev,
 			    struct rtnl_link_stats64 *stats)
 {
 	struct igc_adapter *adapter = netdev_priv(netdev);
@@ -3910,7 +3910,6 @@ static struct rtnl_link_stats64 *igc_get_stats64(struct net_device *netdev,
 		igc_update_stats(adapter);
 	memcpy(stats, &adapter->stats64, sizeof(*stats));
 	spin_unlock(&adapter->stats64_lock);
-	return stats;
 }
 
 static netdev_features_t igc_fix_features(struct net_device *netdev,
@@ -4668,8 +4667,8 @@ static int igc_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 	}
 }
 
-static int igc_save_launchtime_params(struct igc_adapter *adapter, int queue,
-				      bool enable)
+static int __maybe_unused igc_save_launchtime_params(struct igc_adapter *adapter,
+					      int queue, bool enable)
 {
 	struct igc_ring *ring;
 	int i;
@@ -4680,10 +4679,10 @@ static int igc_save_launchtime_params(struct igc_adapter *adapter, int queue,
 	ring = adapter->tx_ring[queue];
 	ring->launchtime_enable = enable;
 
-	if (adapter->base_time.tv64)
+	if (ktime_to_ns(adapter->base_time))
 		return 0;
 
-	adapter->cycle_time.tv64 = NSEC_PER_SEC;
+	adapter->cycle_time = ns_to_ktime(NSEC_PER_SEC);
 
 	for (i = 0; i < adapter->num_tx_queues; i++) {
 		ring = adapter->tx_ring[i];
@@ -4694,7 +4693,8 @@ static int igc_save_launchtime_params(struct igc_adapter *adapter, int queue,
 	return 0;
 }
 
-static bool is_base_time_past(ktime_t base_time, const struct timespec64 *now)
+static bool __maybe_unused is_base_time_past(ktime_t base_time,
+					     const struct timespec64 *now)
 {
 	struct timespec64 b;
 
